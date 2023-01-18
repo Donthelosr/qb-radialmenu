@@ -7,8 +7,6 @@ local vehicleIndex = nil
 
 local DynamicMenuItems = {}
 local FinalMenuItems = {}
-local controlsToToggle = {24,0,1,2, 142, 257, 346} -- if not using toggle
-
 -- Functions
 
 local function deepcopy(orig) -- modified the deep copy function from http://lua-users.org/wiki/CopyTable
@@ -57,16 +55,14 @@ local function RemoveOption(id)
 end
 
 local function SetupJobMenu()
-    local JobInteractionCheck = PlayerData.job.name
-    if PlayerData.job.type == "leo" then JobInteractionCheck = "police" end
     local JobMenu = {
         id = 'jobinteractions',
         title = 'Work',
         icon = 'briefcase',
         items = {}
     }
-    if Config.JobInteractions[JobInteractionCheck] and next(Config.JobInteractions[JobInteractionCheck]) and PlayerData.job.onduty then
-        JobMenu.items = Config.JobInteractions[JobInteractionCheck]
+    if Config.JobInteractions[PlayerData.job.name] and next(Config.JobInteractions[PlayerData.job.name]) then
+        JobMenu.items = Config.JobInteractions[PlayerData.job.name]
     end
 
     if #JobMenu.items == 0 then
@@ -92,17 +88,6 @@ local function SetupVehicleMenu()
     if Vehicle ~= 0 then
         VehicleMenu.items[#VehicleMenu.items+1] = Config.VehicleDoors
         if Config.EnableExtraMenu then VehicleMenu.items[#VehicleMenu.items+1] = Config.VehicleExtras end
-
-        if not IsVehicleOnAllWheels(Vehicle) then
-            VehicleMenu.items[#VehicleMenu.items+1] = {
-                id = 'vehicle-flip',
-                title = 'Flip Vehicle',
-                icon = 'car-burst',
-                type = 'client',
-                event = 'qb-radialmenu:flipVehicle',
-                shouldClose = true
-            }
-        end
 
         if IsPedInAnyVehicle(ped) then
             local seatIndex = #VehicleMenu.items+1
@@ -160,7 +145,7 @@ local function selectOption(t, t2)
 end
 
 local function IsPoliceOrEMS()
-    return (PlayerData.job.name == "police" or PlayerData.job.type == "leo" or PlayerData.job.name == "ambulance")
+    return (PlayerData.job.name == "police" or PlayerData.job.name == "bcso" or PlayerData.job.name == "sasp" or PlayerData.job.name == "ambulance")
 end
 
 local function IsDowned()
@@ -174,7 +159,7 @@ local function SetupRadialMenu()
                 [1] = {
                     id = 'emergencybutton2',
                     title = Lang:t("options.emergency_button"),
-                    icon = 'circle-exclamation',
+                    icon = 'exclamation-circle',
                     type = 'client',
                     event = 'police:client:SendPoliceEmergencyAlert',
                     shouldClose = true,
@@ -190,52 +175,99 @@ local function SetupRadialMenu()
     end
 end
 
-local function controlToggle(bool)
-    for i = 1, #controlsToToggle,1 do
-        if bool then
-            exports['qb-smallresources']:addDisableControls(controlsToToggle[i])
-        else
-            exports['qb-smallresources']:removeDisableControls(controlsToToggle[i])
-        end
-    end
-end
-
-
 local function setRadialState(bool, sendMessage, delay)
-        -- Menuitems have to be added only once
-    if Config.UseWhilstWalking then
-        if bool then
-            SetupRadialMenu()
-            PlaySoundFrontend(-1, "NAV", "HUD_AMMO_SHOP_SOUNDSET", 1)
-            controlToggle(true)
-        else
-            controlToggle(false)
-        end
-        SetNuiFocus(bool, bool)
-        SetNuiFocusKeepInput(bool, true)
+    -- Menuitems have to be added only once
+
+    if bool then
+        TriggerEvent('qb-radialmenu:client:onRadialmenuOpen')
+        SetupRadialMenu()
     else
-        if bool then
-            TriggerEvent('qb-radialmenu:client:onRadialmenuOpen')
-            SetupRadialMenu()
-        else
-            TriggerEvent('qb-radialmenu:client:onRadialmenuClose')
-        end
-        SetNuiFocus(bool, bool)
+        TriggerEvent('qb-radialmenu:client:onRadialmenuClose')
     end
 
+    SetNuiFocus(bool, bool)
     if sendMessage then
         SendNUIMessage({
             action = "ui",
             radial = bool,
-            items = FinalMenuItems,
-            toggle = Config.Toggle,
-            keybind = Config.Keybind
+            items = FinalMenuItems
         })
     end
     if delay then Wait(500) end
     inRadialMenu = bool
 end
 
+--MojiaGarages
+local function CheckHasID(id1, id2)
+	local has = false
+	if Config.MenuItems[id1].items then
+		for k, v in pairs(Config.MenuItems[id1].items) do
+			if v.id == id2 then
+				has = true
+			end
+		end
+	end
+	return has
+end
+
+local function CheckHasID2(job, id)
+	local has = false
+	if Config.JobInteractions[job] then
+		for k, v in pairs(Config.JobInteractions[job]) do
+			if v.id == id then
+				has = true
+			end
+		end
+	end
+	return has
+end
+
+local function addSubMenu(id1, id2, menu)
+	if Config.MenuItems[id1].items and not CheckHasID(id1, id2) then
+		Config.MenuItems[id1].items[#Config.MenuItems[id1].items + 1] = menu
+	end
+end
+
+local function addJobSubMenu(job, id, menu)
+	if Config.JobInteractions[job] and not CheckHasID2(job, id) then
+		Config.JobInteractions[job][#Config.JobInteractions[job] +1 ] =  menu
+	end
+end
+
+local function removeSubMenu(id1, id2)
+	if Config.MenuItems[id1].items and CheckHasID(id1, id2) then
+		for k, v in pairs(Config.MenuItems[id1].items) do
+			if v.id == id2 then
+        			if k == #Config.MenuItems[id1].items then
+					Config.MenuItems[id1].items[k] = nil
+        			else
+          				Config.MenuItems[id1].items[k] = Config.MenuItems[id1].items[#Config.MenuItems[id1].items]
+          				Config.MenuItems[id1].items[#Config.MenuItems[id1].items] = nil
+        			end
+			end
+		end
+	end
+end
+
+local function removeJobSubMenu(job, id)
+	if Config.JobInteractions[job] and CheckHasID2(job, id) then
+		for k, v in pairs(Config.JobInteractions[job]) do
+			if v.id == id then
+        			if k == #Config.JobInteractions[job] then
+					Config.JobInteractions[job][k] = nil
+        			else
+          				Config.JobInteractions[job][k] = Config.JobInteractions[job][#Config.JobInteractions[job]]
+          				Config.JobInteractions[job][#Config.JobInteractions[job]] = nil
+        			end
+			end
+		end
+	end
+end
+
+exports('addSubMenu', addSubMenu)
+exports('addJobSubMenu', addJobSubMenu)
+exports('removeSubMenu', removeSubMenu)
+exports('removeJobSubMenu', removeJobSubMenu)
 -- Command
 
 RegisterCommand('radialmenu', function()
@@ -245,23 +277,26 @@ RegisterCommand('radialmenu', function()
     end
 end)
 
-RegisterKeyMapping('radialmenu', Lang:t("general.command_description"), 'keyboard', Config.Keybind)
+RegisterKeyMapping('radialmenu', Lang:t("general.command_description"), 'keyboard', 'F1')
 
 -- Events
 
 -- Sets the metadata when the player spawns
 RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
     PlayerData = QBCore.Functions.GetPlayerData()
+	TriggerEvent('MojiaGarages:client:updateRadialmenu')
 end)
 
 -- Sets the playerdata to an empty table when the player has quit or did /logout
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
     PlayerData = {}
+	TriggerEvent('MojiaGarages:client:updateRadialmenu')
 end)
 
 -- This will update all the PlayerData that doesn't get updated with a specific event other than this like the metadata
 RegisterNetEvent('QBCore:Player:SetPlayerData', function(val)
     PlayerData = val
+	TriggerEvent('MojiaGarages:client:updateRadialmenu')
 end)
 
 RegisterNetEvent('qb-radialmenu:client:noPlayers', function()
@@ -364,23 +399,6 @@ RegisterNetEvent('qb-radialmenu:client:ChangeSeat', function(data)
     end
 end)
 
-RegisterNetEvent('qb-radialmenu:flipVehicle', function()
-    TriggerEvent('animations:client:EmoteCommandStart', {"mechanic"})
-    QBCore.Functions.Progressbar("pick_grape", Lang:t("progress.flipping_car"), Config.Fliptime, false, true, {
-        disableMovement = true,
-        disableCarMovement = true,
-        disableMouse = false,
-        disableCombat = true,
-    }, {}, {}, {}, function() -- Done
-        local vehicle = getNearestVeh()
-        SetVehicleOnGroundProperly(vehicle)
-        TriggerEvent('animations:client:EmoteCommandStart', {"c"})
-    end, function() -- Cancel
-        QBCore.Functions.Notify(Lang:t("task.cancel_task"), "error")
-        TriggerEvent('animations:client:EmoteCommandStart', {"c"})
-    end)
-end)
-
 -- NUI Callbacks
 
 RegisterNUICallback('closeRadial', function(data, cb)
@@ -409,3 +427,104 @@ end)
 
 exports('AddOption', AddOption)
 exports('RemoveOption', RemoveOption)
+
+local garaIndex = nil
+local function SetupGaragesMenu()
+    local isingarage, canStoreVehicle = exports["MojiaGarages"]:IsInGarage()
+	local isInJobGarage, lastJobVehicle = exports["MojiaGarages"]:isInJobStation(PlayerData.job.name)
+	local GaragesMenu = {
+        id = 'garages',
+        title = 'Garages',
+        icon = 'warehouse',
+        items = {}
+    }
+	if isingarage then
+		GaragesMenu.items[#GaragesMenu.items+1] = {
+			id = 'opengarage',
+			title = 'Open Garage',
+			icon = 'warehouse',
+			type = 'client',
+			event = 'MojiaGarages:client:openGarage',
+			shouldClose = true,
+		}
+		local veh = nil
+		local ped = PlayerPedId()
+		local pos = GetEntityCoords(ped)
+		local vehout, distance = QBCore.Functions.GetClosestVehicle(pos)
+		local vehin = IsPedInAnyVehicle(ped, true)
+		if vehin then
+			veh = GetVehiclePedIsIn(ped)
+		else
+			if NetworkGetEntityIsLocal(vehout) and distance <= 5 then
+				veh = vehout
+			end
+		end
+		if veh ~= nil then
+			local plate = QBCore.Functions.GetPlate(veh)
+			if exports["qb-vehiclekeys"]:HasKeys(plate) then
+				if canStoreVehicle then
+					GaragesMenu.items[#GaragesMenu.items+1] = {
+						id = 'storeVehicle',
+						title = 'Store Vehicle',
+						icon = 'parking',
+						type = 'client',
+						event = 'MojiaGarages:client:storeVehicle',
+						shouldClose = true,
+					}
+				end
+			end
+		end
+	end
+	if isInJobGarage then
+		if lastJobVehicle == nil then
+			GaragesMenu.items[#GaragesMenu.items+1] = {
+				id = 'openjobgarage',
+				title = 'Open Job Garage',
+				icon = 'warehouse',
+				type = 'client',
+				event = 'MojiaGarages:client:openJobVehList',
+				shouldClose = true,
+			}
+		else
+			local veh = nil
+			local ped = PlayerPedId()
+			local pos = GetEntityCoords(ped)
+			local vehout, distance = QBCore.Functions.GetClosestVehicle(pos)
+			local vehin = IsPedInAnyVehicle(ped, true)
+			if vehin then
+				veh = GetVehiclePedIsIn(ped)
+			else
+				if NetworkGetEntityIsLocal(vehout) and distance <= 5 then
+					veh = vehout
+				end
+			end
+			if veh ~= nil and veh == lastJobVehicle then
+				local plate = QBCore.Functions.GetPlate(veh)
+				if exports["qb-vehiclekeys"]:HasKeys(plate) then --disable if use MojiaVehicleKeys
+			--if exports['MojiaVehicleKeys']:CheckHasKey(plate) then --enable if use MojiaVehicleKeys
+					GaragesMenu.items[#GaragesMenu.items+1] = {
+						id = 'hidejobvehicle',
+						title = 'Hide Job Vehicle',
+						icon = 'parking',
+						type = 'client',
+						event = 'MojiaGarages:client:HideJobVeh',
+						shouldClose = true,
+					}
+				end
+			end
+		end
+	end
+    if #GaragesMenu.items == 0 then
+        if garaIndex then
+            RemoveOption(garaIndex)
+            garaIndex = nil
+        end
+    else
+        garaIndex = AddOption(GaragesMenu, garaIndex)
+    end
+end
+local function SetupSubItems()
+    SetupJobMenu()
+    SetupVehicleMenu()
+	SetupGaragesMenu()
+end
